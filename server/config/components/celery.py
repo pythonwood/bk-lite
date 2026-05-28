@@ -12,6 +12,14 @@ CELERY_IMPORTS = ()
 CELERY_TIMEZONE = TIME_ZONE  # celery 时区问题
 CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL", "amqp://admin:password@rabbitmq.lite/")
 
+# celery -A apps.core.celery flower --port=5555 -E
+# celery -A apps.core.celery flower --port=5555 --address=0.0.0.0 --enable-events --persistent=True --db=/tmp/flower.db --max-tasks=10000
+# 2026-05-22 反馈 这两块我正在加强可观测性建设。
+# nats方面我nat-surevyor 和faststream 自行监控 celery方面建议server容器中镜像安装flower，增加flower的supervisor配置。
+CELERY_WORKER_SEND_TASK_EVENTS = True
+CELERY_TASK_SEND_SENT_EVENT = True
+# 我本地加了，想提pr的。不过发现  requirements.txt 和 supervisor配置 我看源码没有的。 明天再说
+
 if IS_USE_CELERY:
     INSTALLED_APPS = locals().get("INSTALLED_APPS", [])
     INSTALLED_APPS += (
