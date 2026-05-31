@@ -11,6 +11,7 @@ from apps.job_mgmt.services.callback_service import send_callback
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
 from config.components.nats import NATS_NAMESPACE
+import base64
 
 
 class ExecutionTaskBaseService(object):
@@ -221,10 +222,16 @@ class ExecutionTaskBaseService(object):
 
         # 调用 Ansible Executor
         executor = AnsibleExecutor(ansible_node_id)
+        if module == "shell" and script_type == ScriptType.SHELL:
+            b64 = base64.b64encode(script_content.encode("utf-8")).decode("ascii")
+            safe_module_args = f"echo {b64} | base64 -d | bash"
+        else:
+            safe_module_args = script_content
         result = executor.adhoc(
             host_credentials=host_credentials,
             module=module,
-            module_args=script_content,
+            # module_args=script_content,
+            module_args=safe_module_args,
             callback=callback_config,
             task_id=str(execution.id),
             timeout=execution.timeout,
