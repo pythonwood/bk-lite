@@ -136,12 +136,49 @@ class ScriptParamsService:
             params: 参数列表
 
         Returns:
-            str: 空格分隔的参数字符串，如 "value1 value2 value3"
+            str: 空格分隔的参数字符串，如 "value1 '' value3"。下游 shlex.split 可还原 token 边界
         """
         if not params:
             return ""
 
         values = [str(param.get("value", "")) for param in params]
+        # return " ".join(values)
+
+        # 2026-06-08 需求 ["stop all '  ' '  ' no no '  '"]或者[' stop', 'all', '  ', '  ', 'no', 'no', '  ']都能处理好，结果"stop all ' ' ' ' no no ' '"  隔日才完成
+        # with open('/tmp/params.txt', 'a') as f: f.write(str(values)+'\n') # DEBUG
+        ret = " ".join(values)
+        import shlex # 不能全局import  UnboundLocalError: cannot access local variable 'shlex' where it is not associated with a value
+        # return shlex.join(shlex.split(ret)) # shlex幂等 一轮操作 ["stop all '  ' '  ' no no '  '"] 编程 "stop all no no"不符合预期
+        # return ret if values.count("'")>=2 or len(shlex.split(ret)) == len(params) else " ".join(shlex.quote(v) for v in values) # 太复杂不好维护
+        return ret if ret==shlex.join(shlex.split(ret)) else shlex.join(values)
+
+
+        # 后端做"反检测"—— 试探 value 是不是被 quote 过，是的话直接返回 判断不了："stop all '' '' no no"
+
+        # AI写 检测代码
+        # - 每个 value 若是 "完整 shell-quoted token"（前端误加了一层引号），先剥一层 - 然后用 shlex.quote 重新转义，保证空字符串变 ''、含空格的串被引号保护
+        # def _strip_pre_quote(v: str) -> str:
+        #     # 仅当首尾是同种引号且 shlex.split 解出恰好 1 个 token 时才剥
+        #     if len(v) < 2 or v[0] not in ("'", '"') or v[-1] != v[0]:
+        #         return v
+        #     try:
+        #         tokens = shlex.split(v)
+        #     except ValueError:
+        #         return v
+        #     if len(tokens) == 1:
+        #         return tokens[0]
+        #     return v
+        # values = [shlex.quote(_strip_pre_quote(str(param.get("value", "")))) for param in params]
+        # return " ".join(values)
+
+        # 人写 检测代码 恰巧对  ["'stop' 'all' '  ' '  ' 'no' 'no' '  '"] 是生效的
+        func = lambda p: not p or p[0]==p[-1]=='"' or p[0]==p[-1]=="'"
+        if all(func(param.get('value', '')) for param in params):
+            return ' '.join(str(param.get("value", "")) for param in params)
+
+        # 加上shlex.quote解决 前端传的 8 个参数 ["", "", "", "", "", "", "no", "no"] → 拼成字符串： "      no no"   (6个空格 + no no) 问题
+        import shlex
+        values = [shlex.quote(str(param.get("value", ""))) for param in params]
         return " ".join(values)
 
     @staticmethod
