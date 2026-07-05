@@ -105,6 +105,7 @@ class LogPolicyScan:
                         "raw_data": logs[:sample_limit],  # 只保留少量样本日志作为原始数据
                     }
                 )
+            return events
 
         except Exception as e:
             logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
@@ -172,6 +173,7 @@ class LogPolicyScan:
                             },
                         }
                     )
+            return events
 
         except Exception as e:
             logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
