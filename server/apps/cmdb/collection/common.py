@@ -106,13 +106,46 @@ class Management:
                     exist_items.append(entity)
                     result["success"].append(dict(inst_info=entity, assos_result=assos_result))
                 except Exception as e:
+                    existing_entity = self._find_existing_instance_by_unique_keys(ag, instance_info)
+                    if existing_entity and self._is_unique_conflict(e):
+                        update_exist_items = [item for item in exist_items if item.get("_id") != existing_entity["_id"]]
+                        entity = ag.set_entity_properties(
+                            INSTANCE,
+                            [existing_entity["_id"]],
+                            instance_info,
+                            self.check_attr_map,
+                            update_exist_items,
+                        )[0]
+                        assos_result = self.setting_assos(entity, assos)
+                        exist_items = [item for item in exist_items if item.get("_id") != entity["_id"]]
+                        exist_items.append(entity)
+                        result["success"].append(dict(inst_info=entity, assos_result=assos_result))
+                        continue
+
                     result["failed"].append({"instance_info": instance_info, "error": getattr(e, "message", e)})
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
         schedule_instance_auto_relation_reconcile([item["inst_info"]["_id"] for item in result["success"]])
-
         return result
+
+    def _find_existing_instance_by_unique_keys(self, graph_client, instance_info):
+        """采集新增遇到唯一键冲突时，按采集唯一键查回已有实例，实现幂等 upsert。"""
+        params = [{"field": "model_id", "type": "str=", "value": self.model_id}]
+        for key in self.unique_keys:
+            value = instance_info.get(key)
+            if value is None:
+                return None
+            params.append({"field": key, "type": "str=", "value": value})
+
+        existing_entities, _ = graph_client.query_entity(INSTANCE, params)
+        return existing_entities[0] if existing_entities else None
+
+    @staticmethod
+    def _is_unique_conflict(error):
+        message = str(getattr(error, "message", error))
+        return " exist；" in message or " exist;" in message
+
 
     def update_inst(self, inst_list):
         """更新实例"""
@@ -204,10 +237,15 @@ class Management:
                     asso_info["dst_inst_name"] = dst_info["inst_name"]
                     assos_result["success"].append(asso_info)
             except Exception as e:
+                error_message = str(getattr(e, "message", e))
                 asso_info = self.set_asso_info(dst_id, src_info, dst_info)
                 asso_info["src_inst_name"] = src_info["inst_name"]
                 asso_info["dst_inst_name"] = dst_info["inst_name"]
-                asso_info.update({"src_info": src_info, "dst_info": dst_info, "error": str(getattr(e, "message", e))})
+                if error_message == "edge already exists":
+                    assos_result["success"].append(asso_info)
+                    continue
+
+                asso_info.update({"src_info": src_info, "dst_info": dst_info, "error": error_message})
                 assos_result["failed"].append(asso_info)
         return assos_result
 
